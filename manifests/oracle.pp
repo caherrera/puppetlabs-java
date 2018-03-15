@@ -101,10 +101,13 @@ define java::oracle (
   $proxy_type    = undef,
   $url           = undef,
   $url_hash      = undef,
+  $file          = undef,
 ) {
 
   # archive module is used to download the java package
   include ::archive
+
+  ensure_resource('class', 'stdlib')
 
   # validate java Standard Edition to download
   if $java_se !~ /(jre|jdk)/ {
@@ -116,7 +119,7 @@ define java::oracle (
 
     $release_major = $version_major
     $release_minor = $version_minor
-    $release_hash  = $url_hash
+    $release_hash = $url_hash
 
     if $release_major =~ /(\d+)u(\d+)/ {
       $install_path = "${java_se}1.${1}.0_${2}"
@@ -126,38 +129,38 @@ define java::oracle (
   } else {
     # use default versions if no specific major and minor version parameters are provided
     case $version {
-      '6' : {
+      '6': {
         $release_major = '6u45'
         $release_minor = 'b06'
         $install_path = "${java_se}1.6.0_45"
-        $release_hash  = undef
+        $release_hash = undef
       }
-      '7' : {
+      '7': {
         $release_major = '7u80'
         $release_minor = 'b15'
         $install_path = "${java_se}1.7.0_80"
-        $release_hash  = undef
+        $release_hash = undef
       }
-      '8' : {
+      '8': {
         $release_major = '8u131'
         $release_minor = 'b11'
         $install_path = "${java_se}1.8.0_131"
-        $release_hash  = 'd54c1d3a095b4ff2b6607d096fa80163'
+        $release_hash = 'd54c1d3a095b4ff2b6607d096fa80163'
       }
-      default : {
+      default: {
         $release_major = '8u131'
         $release_minor = 'b11'
         $install_path = "${java_se}1.8.0_131"
-        $release_hash  = 'd54c1d3a095b4ff2b6607d096fa80163'
+        $release_hash = 'd54c1d3a095b4ff2b6607d096fa80163'
       }
     }
   }
 
   # determine package type (exe/tar/rpm), destination directory based on OS
   case $facts['kernel'] {
-    'Linux' : {
+    'Linux': {
       case $facts['os']['family'] {
-        'RedHat', 'Amazon' : {
+        'RedHat', 'Amazon': {
           # Oracle Java 6 comes in a special rpmbin format
           if $version == '6' {
             $package_type = 'rpmbin'
@@ -166,28 +169,28 @@ define java::oracle (
           }
           $creates_path = "/usr/java/${install_path}"
         }
-        'Debian' : {
-            $package_type = 'tar.gz'
-            $creates_path = "/usr/lib/jvm/${install_path}"
+        'Debian': {
+          $package_type = 'tar.gz'
+          $creates_path = "/usr/lib/jvm/${install_path}"
         }
-        default : {
-          fail ("unsupported platform ${$facts['os']['name']}") }
+        default: {
+          fail("unsupported platform ${$facts['os']['name']}") }
       }
 
       $os = 'linux'
       $destination_dir = '/tmp/'
     }
-    default : {
-      fail ( "unsupported platform ${$facts['kernel']}" ) }
+    default: {
+      fail("unsupported platform ${$facts['kernel']}") }
   }
 
   # set java architecture nomenclature
   case $facts['os']['architecture'] {
-    'i386' : { $arch = 'i586' }
-    'x86_64' : { $arch = 'x64' }
-    'amd64' : { $arch = 'x64' }
-    default : {
-      fail ("unsupported platform ${$facts['os']['architecture']}")
+    'i386': { $arch = 'i586' }
+    'x86_64': { $arch = 'x64' }
+    'amd64': { $arch = 'x64' }
+    default: {
+      fail("unsupported platform ${$facts['os']['architecture']}")
     }
   }
 
@@ -199,19 +202,19 @@ define java::oracle (
   # http://download.oracle.com/otn-pub/java/jdk/6u45-b06/jdk-6u45-linux-i586.bin
   # package name to download from Oracle's website
   case $package_type {
-    'bin' : {
+    'bin': {
       $package_name = "${java_se}-${release_major}-${os}-${arch}.bin"
     }
-    'rpmbin' : {
+    'rpmbin': {
       $package_name = "${java_se}-${release_major}-${os}-${arch}-rpm.bin"
     }
-    'rpm' : {
+    'rpm': {
       $package_name = "${java_se}-${release_major}-${os}-${arch}.rpm"
     }
-    'tar.gz' : {
+    'tar.gz': {
       $package_name = "${java_se}-${release_major}-${os}-${arch}.tar.gz"
     }
-    default : {
+    default: {
       $package_name = "${java_se}-${release_major}-${os}-${arch}.rpm"
     }
   }
@@ -229,63 +232,73 @@ define java::oracle (
 
   # full path to the installer
   $destination = "${destination_dir}${package_name}"
-  notice ("Destination is ${destination}")
+  notice("Destination is ${destination}")
 
   case $package_type {
-    'bin' : {
+    'bin': {
       $install_command = "sh ${destination}"
     }
-    'rpmbin' : {
+    'rpmbin': {
       $install_command = "sh ${destination} -x; rpm --force -iv sun*.rpm; rpm --force -iv ${java_se}*.rpm"
     }
-    'rpm' : {
+    'rpm': {
       $install_command = "rpm --force -iv ${destination}"
     }
-    'tar.gz' : {
+    'tar.gz': {
       $install_command = "tar -zxf ${destination} -C /usr/lib/jvm"
     }
-    default : {
+    default: {
       $install_command = "rpm -iv ${destination}"
     }
   }
 
   case $ensure {
-    'present' : {
-      archive { $destination :
-        ensure       => present,
-        source       => $source,
-        cookie       => 'gpw_e24=http%3A%2F%2Fwww.oracle.com%2F; oraclelicense=accept-securebackup-cookie',
-        extract_path => '/tmp',
-        cleanup      => false,
-        creates      => $creates_path,
-        proxy_server => $proxy_server,
-        proxy_type   => $proxy_type,
+    'present': {
+      if $file {
+        file { $destination:
+          source => $file,
+          before => Exec["Install Oracle java_se ${java_se} ${version}"]
+
+        }
+      }else {
+        archive { $destination:
+          ensure       => present,
+          source       => $source,
+          cookie       => 'gpw_e24=http%3A%2F%2Fwww.oracle.com%2F; oraclelicense=accept-securebackup-cookie',
+          extract_path => '/tmp',
+          cleanup      => false,
+          creates      => $creates_path,
+          proxy_server => $proxy_server,
+          proxy_type   => $proxy_type,
+          before       => Exec["Install Oracle java_se ${java_se} ${version}"]
+        }
       }
+
       case $facts['kernel'] {
-        'Linux' : {
-          exec { "Install Oracle java_se ${java_se} ${version}" :
+        'Linux': {
+          exec { "Install Oracle java_se ${java_se} ${version}":
             path    => '/bin:/sbin:/usr/bin:/usr/sbin:/usr/local/bin:/usr/local/sbin',
             command => $install_command,
             creates => $creates_path,
-            require => Archive[$destination]
+
           }
           case $facts['os']['family'] {
-            'Debian' : {
-              file{'/usr/lib/jvm':
+            'Debian': {
+              file { '/usr/lib/jvm':
                 ensure => directory,
                 before => Exec["Install Oracle java_se ${java_se} ${version}"]
               }
             }
-            default : { }
+            default: {}
           }
         }
-        default : {
-          fail ("unsupported platform ${$facts['kernel']}")
+        default: {
+          fail("unsupported platform ${$facts['kernel']}")
         }
       }
     }
-    default : {
-      notice ("Action ${ensure} not supported.")
+    default: {
+      notice("Action ${ensure} not supported.")
     }
   }
 
