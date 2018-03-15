@@ -3,3 +3,4 @@
 *.erb eol=lf
 *.pp eol=lf
 *.sh eol=lf
+*.tar.gz filter=lfs diff=lfs merge=lfs -text
